@@ -11,7 +11,7 @@ from sklearn.metrics import confusion_matrix
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve, auc
 from sklearn.metrics import classification_report
 
 # 1. Data Collection
@@ -249,3 +249,78 @@ for clf_name, features in selected_features_dict.items():
     print(classification_report(y_test, clf.predict(X_test)))
 
 
+# 8. Hyperparameter Tuning - GridSearchCV and RandomizedSearchCV
+
+param_grids = {
+    'SVC': {
+        'C': [0.1, 1, 10, 100], 
+        'gamma': [1, 0.1, 0.01, 0.001],
+        'kernel': ['rbf', 'poly', 'sigmoid']
+    },
+    'KNeighbors Classifier': {
+        'n_neighbors': list(range(1, 31)),
+        'weights': ['uniform', 'distance'],
+        'metric': ['euclidean', 'manhattan', 'minkowski']
+    },
+    'Extra Trees Classifier': {
+        'n_estimators': [100, 200, 300, 400, 500],
+        'max_depth': [None, 10, 20, 30, 40, 50],
+        'min_samples_split': [2, 5, 10],
+        'min_samples_leaf': [1, 2, 4],
+    }
+}
+
+
+# Initialize a DataFrame to store the performance metrics
+metrics_df = pd.DataFrame(columns=['Accuracy', 'Precision', 'Recall', 'F1 Score', 'ROC AUC Score'])
+
+for clf, clf_name in classifiers:
+    X_selected = X_scaled[selected_features_dict[clf]]
+    X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
+    
+    # Get the parameter grid for this classifier
+    param_grid = param_grids[clf_name]
+
+    grid_search = GridSearchCV(clf, param_grid=param_grid, cv=5, scoring='accuracy')
+    grid_search.fit(X_train, y_train)
+    y_pred = grid_search.predict(X_test)
+ 
+    print(f'Best parameters for {clf_name} using GridSearchCV: {grid_search.best_params_}')
+    print(f'Best score for {clf_name} using GridSearchCV: {grid_search.best_score_}')
+    print(f"ROC AUC score for {clf_name}: {roc_auc_score(y_test, y_pred)}")
+    print(f"Classification report for {clf_name}:\n{classification_report(y_test, y_pred)}")  
+    
+    
+    # 9. Using the best parameters for the top 3 classifiers to train and test the models. (It was easier to do this in the same loop)
+    clf.set_params(**grid_search.best_params_)
+    y_pred = clf.predict(X_test)
+    y_score = clf.predict_proba(X_test)[:, 1]
+    
+    # Compute the performance metrics
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    roc_auc = roc_auc_score(y_test, y_score)
+    
+    # Store the performance metrics in the DataFrame
+    metrics_df.loc[clf_name] = [accuracy, precision, recall, f1, roc_auc]
+    
+    # Compute the ROC curve
+    fpr, tpr, _ = roc_curve(y_test, y_score)
+    
+    # Plot the ROC curve
+    plt.plot(fpr, tpr, label=f'{clf_name} (AUC = {roc_auc:.2f})')
+
+# Add labels and legend to the plot
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic')
+plt.legend(loc='lower right')
+
+# Display the plot
+plt.show()
+
+# Display the performance metrics
+print(metrics_df)
+    
