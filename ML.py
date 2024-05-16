@@ -17,13 +17,12 @@ from joblib import dump, load
 # 1. Data Collection
 columns = ['ID_Number','Diagnosis','Radius','Texture','Perimeter','Area','Smoothness','Compactness','Concavity','Concave_points','Symmetry','Fractal_Dimension','Radius_SE','Texture_SE','Perimeter_SE','Area_SE','Smoothness_SE','Compactness_SE','Concavity_SE','Concave_points_SE','Symmetry_SE','Fractal_Dimension_SE','Radius_Worst','Texture_Worst','Perimeter_Worst','Area_Worst','Smoothness_Worst','Compactness_Worst','Concavity_Worst','Concave_points_Worst','Symmetry_Worst','Fractal_Dimension_Worst']
 df = pd.read_csv('Data/wdbc.data', names=columns)
-df['Diagnosis'] = df['Diagnosis'].map({'B':0,'M':1})
 print(df.head())
 
 # 2. Exploratory Data Analysis
 class_distribution = df['Diagnosis'].value_counts(normalize=True)
 print(class_distribution)
-
+# check the data types of the columns and check for missing values
 df.info()
 df.describe()
 df.isnull().sum()
@@ -32,6 +31,9 @@ df.isnull().sum()
 
 # I need to remove the ID_Number column, as it is not useful for the model.
 df.drop('ID_Number', axis=1, inplace=True)
+
+# change the Diagnosis column from 'B' and 'M' to 0 and 1
+df['Diagnosis'] = df['Diagnosis'].map({'B':0,'M':1})
 
 # check for outliers in the data set.
 from scipy.stats import zscore
@@ -43,42 +45,31 @@ print(f"Number of outliers: {num_outliers}")
 df_filtered = df[filtered_entries]
 # I don't know if these outliers are crucial to detecting cancer, so I will keep them in for now, and run tests later. ***** DONT FORGET
 
-# 3 EDA - visualizing the data
+# The dataset is imbalanced, so I will use SMOTE to balance the dataset.
+X = df.drop('Diagnosis', axis=1)
+y = df['Diagnosis']
 
-# Histogram of each feature, grouped by diagnosis
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-df_malignant = df[df['Diagnosis'] == 1]
-df_benign = df[df['Diagnosis'] == 0]
-'''
-for column in df.columns:
-    if column != 'Diagnosis' and column != 'ID_Number':
-        plt.figure(figsize=(3, 2))
-        plt.hist(df_benign[column], bins=30, color='b', alpha=0.5, label='Benign (0)')
-        plt.hist(df_malignant[column], bins=30, color='r', alpha=0.5, label='Malignant (1)')
-        plt.legend(loc='upper right')
-        plt.xlabel(column)
-        plt.ylabel('Frequency')
-        plt.title(f'{column} Distribution by Diagnosis')
-        plt.show()
-'''
+smote = SMOTE(sampling_strategy='minority')
+X_train_smote, y_train_smote = smote.fit_resample(X_train, y_train)
 
 # 2. Visualising the data
 selected_columns = ['Diagnosis','Radius','Texture','Perimeter','Area','Smoothness','Compactness','Concavity','Concave_points','Symmetry','Fractal_Dimension','Radius_SE','Texture_SE','Perimeter_SE','Area_SE','Smoothness_SE','Compactness_SE','Concavity_SE','Concave_points_SE','Symmetry_SE','Fractal_Dimension_SE','Radius_Worst','Texture_Worst','Perimeter_Worst','Area_Worst','Smoothness_Worst','Compactness_Worst','Concavity_Worst','Concave_points_Worst','Symmetry_Worst','Fractal_Dimension_Worst']
 
-# correlation matrix
+# correlation matrix to see how the features are correlated with each other
 corr_matrix = df[selected_columns].corr()
 
 plt.figure(figsize=(18, 18))
 sns.heatmap(corr_matrix, annot=True, fmt=".2f", square=True, cmap='coolwarm')
 plt.show()
-            
-            
+
+# Feature importance
+
 # Fit a random forest classifier
-y = df['Diagnosis']
-X = df.drop('Diagnosis', axis=1)
 clf = RandomForestClassifier()
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-clf.fit(X_train,y_train)
+clf.fit(X_train_smote,y_train_smote)
 
 # Get feature importances
 importances = clf.feature_importances_
@@ -92,9 +83,8 @@ sorted_importances.plot(kind='bar', color='blue')
 plt.xlabel('Importance')
 plt.title('Feature Importances')
 plt.show()
-# columns to drop
-cols_to_drop = set()
 
+cols_to_drop = set()
 corr_matrix = df.corr()
 
 # Iterate over the correlation matrix and drop the feature with the lowest importance score in each pair of highly correlated features
@@ -119,28 +109,26 @@ print(f"Columns to be dropped: {cols_to_drop}")
 
 # Preliminary Model Training - Testing and scoring a selection of classifiers before feature engineering so I can compare results after.
 
-#y = df['Diagnosis']
-#X = df.drop('Diagnosis', axis=1)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 scores = {}
 
 # List of classifiers
 classifiers = [
-    (RandomForestClassifier(), "RandomForestClassifier"),
-    (RandomForestRegressor(), "RandomForestRegressor"),
-    (SVC(), "SVC"),
-    (KNeighborsClassifier(), "KNeighborsClassifier"),
-    (GradientBoostingClassifier(), "GradientBoostingClassifier"),
-    (MLPClassifier(max_iter=1000), "MLPClassifier"),
-    (AdaBoostClassifier(algorithm="SAMME"), "AdaBoostClassifier"),
-    (ExtraTreesClassifier(), "ExtraTreesClassifier"),
-    (BaggingClassifier(), "BaggingClassifier")
+    (RandomForestClassifier(), "Random Forest Classifier"),
+    (SVC(probability=True), "SVC"),
+    (KNeighborsClassifier(), "KNeighbors Classifier"),
+    (GradientBoostingClassifier(), "Gradient Boosting Classifier"),
+    (MLPClassifier(max_iter=1000), "MLP Classifier"),
+    (LogisticRegression(max_iter=10000), "Logistic Regression"),
+    (AdaBoostClassifier(algorithm="SAMME"), "AdaBoost Classifier"),
+    (ExtraTreesClassifier(), "Extra Trees Classifier"),
+    (BaggingClassifier(), "Bagging Classifier")
 ]
+
 
 # Train and score each classifier
 for clf, clf_name in classifiers:
-    clf.fit(X_train, y_train)
+    clf.fit(X_train_smote, y_train_smote)
     scores[clf_name] = clf.score(X_test, y_test)
 
 # Print scores in descending order
@@ -148,17 +136,18 @@ sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 for key, value in sorted_scores:
     print(f'{key} score: {value}')
     
+    
 # List of classifiers with balanced class weights
 scores_balanced_classifiers = {}
 classifiers_balanced = [
-    (RandomForestClassifier(class_weight='balanced'), "RandomForestClassifier"),
+    (RandomForestClassifier(class_weight='balanced'), "Random Forest Classifier"),
     (SVC(class_weight='balanced'), "SVC"),
-    (ExtraTreesClassifier(class_weight='balanced'), "ExtraTreesClassifier"),
+    (ExtraTreesClassifier(class_weight='balanced'), "Extra Trees Classifier"),
 ]
 
 # Train and score each classifier
 for clf, clf_name in classifiers_balanced:
-    clf.fit(X_train, y_train)
+    clf.fit(X_train_smote, y_train_smote)
     scores_balanced_classifiers[clf_name] = clf.score(X_test, y_test)
     
 # Print scores in descending order
@@ -166,16 +155,16 @@ sorted_scores = sorted(scores_balanced_classifiers.items(), key=lambda x: x[1], 
 for key, value in sorted_scores:
     print(f'{key} score after class weight balanced: {value}. A difference of {value - scores[key]}')
     
-
 #Printing scores after the removal of the columns
-X = df.drop(list(cols_to_drop) + ['Diagnosis'], axis=1)
-print(X.columns)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_cols_dropped = df.drop(list(cols_to_drop) + ['Diagnosis'], axis=1)
+print(X_cols_dropped.columns)
+
+X_train_resampled, y_train_resampled = smote.fit_resample(X_cols_dropped, y)
 scores_after_columns_removed = {}
 
 # Train and score each classifier
 for clf, clf_name in classifiers:
-    clf.fit(X_train, y_train)
+    clf.fit(X_train_smote, y_train_smote)
     scores_after_columns_removed[clf_name] = clf.score(X_test, y_test)
 
 # Print scores in descending order
@@ -187,7 +176,6 @@ for key, value in sorted_scores:
 average_difference = np.mean([value - scores[key] for key, value in sorted_scores])
 print(f'\nAverage difference in scores after removing columns: {average_difference}')
 
-
 from sklearn.model_selection import cross_val_score
 
 # Dictionary to store cross-validation scores
@@ -195,7 +183,7 @@ cv_scores = {}
 
 # Perform cross-validation for each classifier
 for clf, clf_name in classifiers:
-    scores = cross_val_score(clf, X, y, cv=5)  # 5-fold cross-validation
+    scores = cross_val_score(clf, X, y, cv=5)
     cv_scores[clf_name] = scores.mean()
 
 # Print cross-validation scores in descending order
@@ -204,56 +192,47 @@ for key, value in sorted_scores:
     print(f'{key} cross-validation score: {value}')
     
 # 4. Feature Engineering
-#y = df['Diagnosis']
-#X = df.drop('Diagnosis', axis=1)
 
 # Scaling my numerical features
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 X_scaled = pd.DataFrame(X_scaled, columns=X.columns)
 
-X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
-rfc = RandomForestClassifier()
-rfc.fit(X_train, y_train)
-#print(f"ExtraTreesClassifier score before removing features: {rfc.score(X_test, y_test)}")
+X_scaled_resampled, y_resampled = smote.fit_resample(X_scaled, y)
 
-etc_score = cross_val_score(rfc, X_scaled, y, cv=5)
+# Train-test split on the resampled data
+X_train_resampled, X_test_resampled, y_train_resampled, y_test_resampled = train_test_split(X_scaled_resampled, y_resampled, test_size=0.2, random_state=42)
+
+# Fit the model on the resampled training data
+rfc_resampled = RandomForestClassifier()
+rfc_resampled.fit(X_train_resampled, y_train_resampled)
+
+
+etc_score = cross_val_score(rfc_resampled, X_scaled, y, cv=5)
 #print(f"ExtraTreesClassifier score before removing features: {etc_score.mean()}")
 
 # visualizing feature importance
-importances = rfc.feature_importances_
+importances = rfc_resampled.feature_importances_
 indices = np.argsort(importances)[::-1]
 plt.figure(figsize=(8, 3))
-plt.bar(range(X_train.shape[1]), importances[indices])
-plt.xticks(range(X_train.shape[1]), X_train.columns[indices], rotation=90)
+plt.bar(range(X_train_smote.shape[1]), importances[indices])
+plt.xticks(range(X_train_smote.shape[1]), X_train_smote.columns[indices], rotation=90)
 plt.show()
-
 
 # Using pipeline and SelectKBest to find the optimal amount of usable features.
 
 from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.model_selection import KFold
 
-# shortened list of classifiers for easier testing
+'''# shortened list of classifiers for quicker testing
 classifiers = [
     (SVC(probability=True), "SVC"),
     (KNeighborsClassifier(), "KNeighbors Classifier"),
     (ExtraTreesClassifier(), "Extra Trees Classifier")
 ]
-
-''' Full List of Classifiers
-classifiers = [
-    (RandomForestClassifier(), "Random Forest Classifier"),
-    (SVC(), "SVC"),
-    (KNeighborsClassifier(), "KNeighbors Classifier"),
-    (GradientBoostingClassifier(), "Gradient Boosting Classifier"),
-    (MLPClassifier(max_iter=1000), "MLP Classifier"),
-    (LogisticRegression(max_iter=1000), "Logistic Regression"),
-    (AdaBoostClassifier(algorithm="SAMME"), "AdaBoost Classifier"),
-    (ExtraTreesClassifier(), "Extra Trees Classifier"),
-    (BaggingClassifier(), "Bagging Classifier")
-]
 '''
+
+
 plt.figure(figsize=(8, 5))
 
 selected_features_dict = {}
@@ -278,7 +257,7 @@ for clf, clf_type in classifiers:
     selector = SelectKBest(score_func=f_classif, k=max_score[0])
     X_selected = selector.fit_transform(X_scaled, y)
     selected_features = X.columns[selector.get_support()]
-    selected_features_dict[clf_type] = selected_features
+    selected_features_dict[clf] = selected_features
 
 
 plt.xlabel('Number of Features')
@@ -287,7 +266,6 @@ plt.title('Number of Features vs Score')
 plt.legend()
 plt.show()
 
-
 # 6. Model Training - Testing and scoring a selection of classifiers after feature engineering 
 
 scores = {}
@@ -295,15 +273,16 @@ scores = {}
 for clf_name, features in selected_features_dict.items():
     
     X_selected = X_scaled[features]
-    X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
+    X_train_smote, y_train_smote = smote.fit_resample(X_selected, y)
+    X_test_selected = X_test_resampled[features]
     
-    clf_name.fit(X_train, y_train)   
-    scores[clf_name] = clf_name.score(X_test, y_test)
+    clf_name.fit(X_train_smote, y_train_smote)   
+    scores[clf_name] = clf_name.score(X_test_selected, y_test_resampled)
+    
     print(f'{clf_name} - Score: {scores[clf_name]}')
-    print(classification_report(y_test, clf_name.predict(X_test)))
+    print(classification_report(y_test_resampled, clf_name.predict(X_test_selected)))
     
-
-# 8. Hyperparameter Tuning - GridSearchCV and RandomizedSearchCV
+# 8. Hyperparameter Tuning - GridSearchCV on all the classifiers
 
 param_grids = {
     'SVC': {
@@ -321,7 +300,39 @@ param_grids = {
         'max_depth': [None, 10, 20, 30, 40, 50],
         'min_samples_split': [2, 5, 10],
         'min_samples_leaf': [1, 2, 4],
-    }
+    },
+    'Random Forest Classifier': {
+        'n_estimators': [100, 200, 300, 400, 500],
+        'max_depth': [None, 10, 20, 30, 40, 50],
+        'min_samples_split': [2, 5, 10],
+        'min_samples_leaf': [1, 2, 4],
+    },
+    'Gradient Boosting Classifier': {
+        'n_estimators': [100, 200, 300, 400, 500],
+        'learning_rate': [0.1, 0.05, 0.02, 0.01],
+        'max_depth': [4, 6, 8],
+        'min_samples_leaf': [20, 50,100,150],
+    },
+    'MLP Classifier': {
+        'hidden_layer_sizes': [(50,50,50), (50,100,50), (100,)],
+        'activation': ['tanh', 'relu'],
+        'solver': ['sgd', 'adam'],
+        'alpha': [0.0001, 0.05],
+        'learning_rate': ['constant','adaptive'],
+    },
+    'Logistic Regression': {
+        'C': np.logspace(-4, 4, 20),
+        'solver': ['liblinear'],
+    },
+    'AdaBoost Classifier': {
+        'n_estimators': [50, 100, 150, 200],
+        'learning_rate' : [0.01,0.05,0.1,0.3,1],
+    },
+    'Bagging Classifier': {
+        'n_estimators': [10, 20, 30, 40, 50],
+        'max_samples': [0.5, 1.0],
+        'max_features': [0.5, 1.0],
+    }  
 }
 
 
@@ -330,11 +341,15 @@ metrics_df = pd.DataFrame(columns=['Accuracy', 'Precision', 'Recall', 'F1 Score'
 
 for clf, clf_name in classifiers:
     X_selected = X_scaled[selected_features_dict[clf]]
-    X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
+    
+    # Apply SMOTE to the selected features
+    X_resampled, y_resampled = smote.fit_resample(X_selected, y)
+    X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
     
     # Get the parameter grid for this classifier
     param_grid = param_grids[clf_name]
 
+    # Initialize the GridSearchCV object
     grid_search = GridSearchCV(clf, param_grid=param_grid, cv=5, scoring='accuracy')
     grid_search.fit(X_train, y_train)
     y_pred = grid_search.predict(X_test)
@@ -343,7 +358,6 @@ for clf, clf_name in classifiers:
     print(f'Best score for {clf_name} using GridSearchCV: {grid_search.best_score_}')
     print(f"ROC AUC score for {clf_name}: {roc_auc_score(y_test, y_pred)}")
     print(f"Classification report for {clf_name}:\n{classification_report(y_test, y_pred)}")  
-    
     
     # 9. Using the best parameters for the top 3 classifiers to train and test the models. (It was easier to do this in the same loop)
     clf.set_params(**grid_search.best_params_)
@@ -379,27 +393,44 @@ plt.legend(loc='lower right')
 
 # Display the plot
 plt.show()
-    
-    
+
+
 # Display the performance metrics
 print(metrics_df,'\n')
 
 # Find the model with the highest score
 best_model = metrics_df.idxmax()
 
-# Print the best model and its score
+# Print the best model for each metric and its score
 for metric in metrics_df.columns:
     print(f"The best model for {metric} is {best_model[metric]} with a score of {metrics_df.loc[best_model[metric], metric]}")
+
+
+# I will now compare the classifiers original scores vs their scores after hyperparameter tuning.
+for key, value in sorted_scores:
+    print(f'{key} score increase of: {metrics_df.loc[key, "Accuracy"] - value}')
     
-from sklearn.inspection import PartialDependenceDisplay
+# load the models back in
+model1 = load('SVC_model.joblib')
+model2 = load('KNeighbors Classifier_model.joblib')
+model3 = load('Extra Trees Classifier_model.joblib')
 
-# Load in the winning SVC model
-clf = load('SVC_model.joblib')
-print(selected_features_dict['SVC'])
-# Create a partial dependence plot for the first feature
-for i in range(len(selected_features_dict['SVC'])):
-    features = [i]
-    X_SVC = X_scaled[selected_features_dict['SVC']]
-    disp = PartialDependenceDisplay.from_estimator(clf, X_SVC, features)
+X_resampled, y_resampled = smote.fit_resample(X_scaled, y)
+X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, random_state=42)
 
-    plt.show()
+
+# Ensemble model - Voting Classifier
+ensemble = VotingClassifier(estimators=[('svc', model1), ('knn', model2), ('etc', model3)], voting='hard')
+ensemble.fit(X_train, y_train)
+predictions1 = ensemble.predict(X_test)
+roc_auc1 = roc_auc_score(y_test, predictions1)
+print(f"Ensemble model accuracy: {accuracy_score(y_test, predictions1)}")
+print(f"Ensemble model ROC AUC: {roc_auc}")
+
+# Stacking Classifier
+stacking_model = StackingClassifier(estimators=[('knn', model2), ('etc', model3)],final_estimator=model1)
+stacking_model.fit(X_train, y_train)
+predictions2 = stacking_model.predict(X_test)
+roc_auc2 = roc_auc_score(y_test, predictions2)
+print(f"Stacking model accuracy: {accuracy_score(y_test, predictions2)}")
+print(f"Stacking model ROC AUC: {roc_auc2}")
